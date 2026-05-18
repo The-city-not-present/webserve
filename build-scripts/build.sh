@@ -19,7 +19,7 @@ echo "Re-build htmler..."
 pushd src/endpoints/lib/htmltmpl
 make init
 make build
-touch src/endpoints/lib/htmltmpl/compiled/__init__.py
+touch compiled/__init__.py
 popd
 echo "done"
 echo -
