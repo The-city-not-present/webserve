@@ -45,8 +45,15 @@ echo "# print('out of webserve_bundle')" >> "dist/webserve_bundle.py"
 echo "done"
 echo -
 echo -
+
+
+echo "Bring \"static\" files to ./static/"
+mkdir -p ./dist/static
+rsync -av --exclude='*.py' src/endpoints/lib/htmltmpl/compiled/ ./dist/static/
+echo "done"
+echo -
+echo -
+
 python dist/webserve_bundle.py --program done
-
 deactivate
-
 # popd
