@@ -1,0 +1,6 @@
+[submodule "src/lib/htmltmpl"]
+	path = src/endpoints/lib/htmltmpl
+	url = https://github.com/The-city-not-present/html-template.git
+[submodule "src-make/lib/pinliner"]
+	path = src-make/lib/pinliner
+	url = https://github.com/The-city-not-present/pinliner.git
