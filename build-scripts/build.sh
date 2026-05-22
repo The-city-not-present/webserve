@@ -28,13 +28,13 @@ echo "done"
 echo -
 echo -
 
-
-
 echo "Re-build htmler..."
 pushd src/endpoints/lib/htmltmpl
+if [ -f compiled/html_bundle.py ]; then
+  rm -rf compiled/html_bundle.py
+fi
 make init
-make build
-touch compiled/__init__.py
+make build-only-static
 popd
 echo "done"
 echo -
