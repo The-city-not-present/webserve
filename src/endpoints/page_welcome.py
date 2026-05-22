@@ -1,5 +1,5 @@
 
-from .lib.htmltmpl.src.make_html import make_html
+from .lib.htmltmpl.src import make_html
 
 def render(path,request):
     response = make_html.make_html(
