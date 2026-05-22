@@ -10,12 +10,15 @@ import traceback, sys
 
 if __name__ == '__main__':
     # run as a program
+    import _VERSION
     from webserve import entry_point as program_webserve
 elif '.' in __name__:
     # package
+    from . import _VERSION
     from .webserve import entry_point as program_webserve
 else:
     # included with no parent package
+    import _VERSION
     from webserve import entry_point as program_webserve
 
 
@@ -46,6 +49,12 @@ def call_printdoneanddone_program(*argcs,**kwargs):
     print(f'{STDOUT_COLOR_GREEN}{msg}{STDOUT_COLOR_RESET}',file=sys.stdout)
     return True
 
+def call_printversion_program(*argcs,**kwargs):
+    msg = _VERSION._VERSION
+    msg = msg.strip()
+    print(msg)
+    return True
+
 
 
 
@@ -53,6 +62,7 @@ run_programs = {
     'webserve': call_webserve_program,
     'test': call_test_program,
     'done': call_printdoneanddone_program,
+    'version': call_printversion_program,
 }
 
 

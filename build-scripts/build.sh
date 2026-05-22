@@ -14,6 +14,21 @@ echo -
 
 echo "Init python"
 source .venv/bin/activate
+echo "done"
+echo -
+echo -
+
+echo "Update program version"
+echo "# updated" > src/_VERSION.py
+python -c 'from datetime import datetime; print(f"# {datetime.now()}")' >> src/_VERSION.py
+echo "_VERSION = '''" >> src/_VERSION.py
+git describe >> src/_VERSION.py
+ECHO "'''" >> src/_VERSION.py
+echo "done"
+echo -
+echo -
+
+
 
 echo "Re-build htmler..."
 pushd src/endpoints/lib/htmltmpl
