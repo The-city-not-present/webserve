@@ -2,7 +2,10 @@
 
 
 
-PYTEST=python -m pytest
+VENV=.venv
+PYTHON=$(VENV)/bin/python
+PIP=$(PYTHON) -m pip
+PYTEST=$(PYTHON) -m pytest
 define BROWSER_PYSCRIPT
 import os, webbrowser, sys
 try:
@@ -28,13 +31,17 @@ init:
 
 
 test:
-	$(PYTEST)
+	$(PIP) install -r requirements.txt
+	$(PIP) install pytest pytest-cov pytest-html
+	$(PYTEST) --ignore=src/endpoints/lib/htmltmpl/src-make/lib/pinliner
 
 
 
 test-html:
+	$(PIP) install -r requirements.txt
+	$(PIP) install pytest pytest-cov pytest-html
 	mkdir -p test-results
-	$(PYTEST) --html=test-results/report.html --self-contained-html
+	$(PYTEST) --html=test-results/report.html --self-contained-html --ignore=src/endpoints/lib/htmltmpl/src-make/lib/pinliner
 	$(BROWSER) test-results/report.html
 
 

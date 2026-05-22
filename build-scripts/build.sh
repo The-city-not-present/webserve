@@ -23,7 +23,7 @@ echo "# updated" > src/_VERSION.py
 python -c 'from datetime import datetime; print(f"# {datetime.now()}")' >> src/_VERSION.py
 echo "_VERSION = '''" >> src/_VERSION.py
 git describe >> src/_VERSION.py
-ECHO "'''" >> src/_VERSION.py
+echo "'''" >> src/_VERSION.py
 echo "done"
 echo -
 echo -
