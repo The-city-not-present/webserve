@@ -45,7 +45,7 @@ import html
 
 def get_handler(endpoints):
     class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):
+        def handle_request(self, send_body=True):
             try:
 
                 path = urlparse(self.path).path
@@ -54,7 +54,8 @@ def get_handler(endpoints):
                 if not renderer:
                     self.send_response(404)
                     self.end_headers()
-                    self.wfile.write(b"Not Found")
+                    if send_body:
+                        self.wfile.write(b"Not Found")
                     return
 
                 content, conent_type = renderer(self.path, self)
@@ -64,11 +65,31 @@ def get_handler(endpoints):
                 self.send_response(200)
                 self.send_header(f"Content-type", f"{conent_type}; charset=utf-8")
                 self.end_headers()
-                self.wfile.write(content.encode("utf-8"))
+                if send_body:
+                    self.wfile.write(content.encode("utf-8"))
             except Exception as e:
                 self.send_response(500)
                 self.end_headers()
-                self.wfile.write(html.escape(str(e)).encode())
+                print('',file=sys.stderr)
+                print('Stack trace:',file=sys.stderr)
+                print('',file=sys.stderr)
+                traceback.print_exception(e,limit=20)
+                print('',file=sys.stderr)
+                print('',file=sys.stderr)
+                print('',file=sys.stderr)
+                print('Error:',file=sys.stderr)
+                print('',file=sys.stderr)
+                print(f'{STDOUT_COLOR_RED}{e}{STDOUT_COLOR_RESET}',file=sys.stderr)
+                print('',file=sys.stderr)
+                if send_body:
+                    self.wfile.write("<html><body>"+html.escape("Error processing request").encode()+"</body></html>")
+                    # self.wfile.write("<html><body>"+html.escape(str(e)).encode()+"</body></html>")
+
+        def do_GET(self):
+            self.handle_request(send_body=True)
+
+        def do_HEAD(self):
+            self.handle_request(send_body=False)
 
     return Handler
 
