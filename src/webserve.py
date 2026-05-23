@@ -82,8 +82,8 @@ def get_handler(endpoints):
                 print(f'{STDOUT_COLOR_RED}{e}{STDOUT_COLOR_RESET}',file=sys.stderr)
                 print('',file=sys.stderr)
                 if send_body:
-                    self.wfile.write("<html><body>"+html.escape("Error processing request").encode()+"</body></html>")
-                    # self.wfile.write("<html><body>"+html.escape(str(e)).encode()+"</body></html>")
+                    self.wfile.write(("<html><body>"+html.escape("Error processing request")+"</body></html>").encode())
+                    # self.wfile.write(("<html><body>"+html.escape(str(e))+"</body></html>").encode())
 
         def do_GET(self):
             self.handle_request(send_body=True)
