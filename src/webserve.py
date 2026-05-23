@@ -4,6 +4,11 @@ import traceback, sys
 from dotenv import load_dotenv
 import os
 from datetime import datetime
+# src/webserve.py
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import urlparse
+import html
+
 
 
 
@@ -37,11 +42,6 @@ load_dotenv()
 PORT_NUM = os.getenv("PORT_NUM", "")
 
 
-
-# src/webserve.py
-from http.server import BaseHTTPRequestHandler, HTTPServer
-from urllib.parse import urlparse
-import html
 
 def get_handler(endpoints):
     class Handler(BaseHTTPRequestHandler):
