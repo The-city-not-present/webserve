@@ -2,7 +2,7 @@
 from .lib.htmltmpl.src import make_html
 
 def render(path,request):
-    response = make_html.make_html(
+    response = make_html(
         title = 'Welcome',
         page = 'Welcome',
         h1 = 'Welcome!',
