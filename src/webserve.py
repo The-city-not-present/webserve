@@ -15,12 +15,15 @@ import html
 if __name__ == '__main__':
     # run as a program
     from endpoints import endpoints
+    from endpoints.common_types import HTTP404, HTTP403
 elif '.' in __name__:
     # package
     from .endpoints import endpoints
+    from .endpoints.common_types import HTTP404, HTTP403
 else:
     # included with no parent package
     from endpoints import endpoints
+    from endpoints.common_types import HTTP404, HTTP403
 
 
 
@@ -52,18 +55,33 @@ def get_handler(endpoints):
                 renderer = endpoints.get(path,None)
 
                 if not renderer:
-                    self.send_response(404)
-                    self.end_headers()
-                    if send_body:
-                        self.wfile.write(b"Not Found")
-                    return
+                    raise HTTP404('Not found')
 
-                content, conent_type = renderer(self.path, self)
-                if not conent_type:
-                    conent_type = 'text/html'
+                content, content_type = renderer(self.path, self)
+                if not content_type:
+                    content_type = 'text/html'
 
                 self.send_response(200)
-                self.send_header(f"Content-type", f"{conent_type}; charset=utf-8")
+                self.send_header(f"Content-type", f"{content_type}; charset=utf-8")
+                self.end_headers()
+                if send_body:
+                    self.wfile.write(content.encode("utf-8"))
+            except (HTTP404,HTTP403) as e:
+                statuscode = 503
+                if isinstance(e,HTTP404):
+                    statuscode = 404
+                if isinstance(e,HTTP403):
+                    statuscode = 403
+                content_type = 'text/html' if not (self.headers.get("Accept") == "application/json") else 'application/json'
+                if not content_type:
+                    content_type = 'text/html'
+                content = f'Can\t find / no access: HTTP {statuscode}'
+                renderer = endpoints.get(statuscode,None)
+                if renderer and send_body:
+                    content, _ = renderer(e, self)
+
+                self.send_response(200)
+                self.send_header(f"Content-type", f"{content_type}; charset=utf-8")
                 self.end_headers()
                 if send_body:
                     self.wfile.write(content.encode("utf-8"))
