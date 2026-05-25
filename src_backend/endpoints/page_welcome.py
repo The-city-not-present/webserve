@@ -1,7 +1,7 @@
 
 from .lib.htmltmpl.src import make_html
 
-def render(path,request):
+def render(request, config, msg = None):
     response = make_html(
         title = 'Welcome',
         page = 'Welcome',

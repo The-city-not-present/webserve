@@ -1,7 +1,7 @@
 
 from .lib.htmltmpl.src import make_html
 
-def render(path,request):
+def render(request, config, msg = None):
     raise Exception('Hello, I am the fail')
     response = make_html.make_html(
         title = 'Welcome',

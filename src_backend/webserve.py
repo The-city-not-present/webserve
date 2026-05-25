@@ -4,7 +4,6 @@ import traceback, sys
 from dotenv import load_dotenv
 import os
 from datetime import datetime
-# src/webserve.py
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
 import html
@@ -14,14 +13,20 @@ import html
 
 if __name__ == '__main__':
     # run as a program
+    from GENERATED._VERSION import _VERSION
+    # from GENERATED._WEBAPP_VITE_MANIFEST import _WEBAPP_FRONT_VITE_MANIFEST as frontend_webapp_manifest_string
     from endpoints import endpoints
     from endpoints.common_types import HTTP404, HTTP403
 elif '.' in __name__:
     # package
+    from .GENERATED._VERSION import _VERSION
+    # from .GENERATED._WEBAPP_VITE_MANIFEST import _WEBAPP_FRONT_VITE_MANIFEST as frontend_webapp_manifest_string
     from .endpoints import endpoints
     from .endpoints.common_types import HTTP404, HTTP403
 else:
     # included with no parent package
+    from GENERATED._VERSION import _VERSION
+    # from GENERATED._WEBAPP_VITE_MANIFEST import _WEBAPP_FRONT_VITE_MANIFEST as frontend_webapp_manifest_string
     from endpoints import endpoints
     from endpoints.common_types import HTTP404, HTTP403
 
@@ -42,11 +47,14 @@ STDOUT_COLOR_GREEN = "\033[32m"
 
 
 load_dotenv()
-PORT_NUM = os.getenv("PORT_NUM", "")
+PORT_NUM = os.getenv("PORT_NUM", "0")
+BIND_HOST = os.getenv("BIND_HOST", "0.0.0.0")
+
+STATIC_PATH = os.getenv("ASSET_BASE_URL", "")
 
 
 
-def get_handler(endpoints):
+def get_handler(endpoints,config):
     class Handler(BaseHTTPRequestHandler):
         def handle_request(self, send_body=True):
             try:
@@ -55,9 +63,9 @@ def get_handler(endpoints):
                 renderer = endpoints.get(path,None)
 
                 if not renderer:
-                    raise HTTP404('Not found')
+                    raise HTTP404(f'{path} was not found on the server')
 
-                content, content_type = renderer(self.path, self)
+                content, content_type = renderer(self, config)
                 if not content_type:
                     content_type = 'text/html'
 
@@ -72,13 +80,13 @@ def get_handler(endpoints):
                     statuscode = 404
                 if isinstance(e,HTTP403):
                     statuscode = 403
-                content_type = 'text/html' if not (self.headers.get("Accept") == "application/json") else 'application/json'
+                content_type = 'text/html' if not (self.headers.get("Accept",None) == "application/json") else 'application/json'
                 if not content_type:
                     content_type = 'text/html'
                 content = f'Can\t find / no access: HTTP {statuscode}'
                 renderer = endpoints.get(statuscode,None)
                 if renderer and send_body:
-                    content, _ = renderer(e, self)
+                    content, _ = renderer(self, config, msg = e)
 
                 self.send_response(statuscode)
                 self.send_header(f"Content-type", f"{content_type}; charset=utf-8")
@@ -112,15 +120,15 @@ def get_handler(endpoints):
     return Handler
 
 
-def run(address='0.0.0.0',port_num=PORT_NUM,endpoints=None):
+def run(bind_host='0.0.0.0',port_num='0',endpoints=None,config=None):
     if endpoints is None:
         endpoints = {}
     try:
         port_num = int(port_num)
     except Exception as e:
         raise Exception(f'Can\'t parse port_num param: {port_num}') from e
-    server = HTTPServer((address, port_num), get_handler(endpoints))
-    print('Calling serve_forever()!')
+    server = HTTPServer((bind_host, port_num), get_handler(endpoints,config))
+    print(f'Calling serve_forever() at {bind_host}:{port_num}')
     server.serve_forever()
 
 
@@ -140,6 +148,12 @@ def entry_point(*argcs,**kwargs):
             '--port',
             help='port number',
             type=int,
+            required=False
+        )
+        parser.add_argument(
+            '--bind-host',
+            help='bind host, something like 0.0.0.0',
+            type=str,
             required=False
         )
         # args = None
@@ -162,10 +176,24 @@ def entry_point(*argcs,**kwargs):
             except Exception as e:
                 raise Exception(f'Can\'t parse port_num param: {port_num}') from e
 
+        bind_host = BIND_HOST
+
+        config = {
+            'script_start_time': time_start,
+            'script_name': script_name,
+            'script_arguments': args,
+            'port': port_num,
+            'bind_host': bind_host,
+            'static_file_location': STATIC_PATH, # TODO: ignored for now - make it possible to pass to html_templater
+            'version': _VERSION,
+            # 'frontend_webapp_manifest_string': frontend_webapp_manifest_string,
+        }
+
         result = run(
-            address='0.0.0.0',
+            bind_host='0.0.0.0',
             port_num = port_num,
             endpoints = endpoints,
+            config = config,
         )
 
         time_finish = datetime.now()
