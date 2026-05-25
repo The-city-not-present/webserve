@@ -10,7 +10,7 @@ if [ ! -f ".env" ]; then
   cp .env.example .env
 fi
 
-if [ ! -f "src-make/lib/pinliner/pinliner/pinliner.py" ]; then
+if [ ! -f "src_dev_build/lib/pinliner/pinliner/pinliner.py" ]; then
   # TODO: confirm is having --remote fine? I think it is. It's something like apt update, it is normal to run this occasionally. I don't see an issue
   git submodule update --init --recursive --remote
 fi

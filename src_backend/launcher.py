@@ -10,15 +10,15 @@ import traceback, sys
 
 if __name__ == '__main__':
     # run as a program
-    import _VERSION
+    from GENERATED import _VERSION
     from webserve import entry_point as program_webserve
 elif '.' in __name__:
     # package
-    from . import _VERSION
+    from .GENERATED import _VERSION
     from .webserve import entry_point as program_webserve
 else:
     # included with no parent package
-    import _VERSION
+    from GENERATED import _VERSION
     from webserve import entry_point as program_webserve
 
 

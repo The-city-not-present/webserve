@@ -21,19 +21,19 @@ BROWSER := python -c "$$BROWSER_PYSCRIPT"
 
 
 build:
-	./build-scripts/build.sh
+	./scripts_build/build.sh
 
 
 
 init:
-	./build-scripts/init.sh
+	./scripts_build/init.sh
 
 
 
 test:
 	$(PIP) install -r requirements.txt
 	$(PIP) install pytest pytest-cov pytest-html
-	$(PYTEST) --ignore=src/endpoints/lib/htmltmpl/src-make/lib/pinliner
+	$(PYTEST) --ignore=src_backend/endpoints/lib/htmltmpl/src-make/lib/pinliner
 
 
 
@@ -41,7 +41,7 @@ test-html:
 	$(PIP) install -r requirements.txt
 	$(PIP) install pytest pytest-cov pytest-html
 	mkdir -p test-results
-	$(PYTEST) --html=test-results/report.html --self-contained-html --ignore=src/endpoints/lib/htmltmpl/src-make/lib/pinliner
+	$(PYTEST) --html=test-results/report.html --self-contained-html --ignore=src_backend/endpoints/lib/htmltmpl/src-make/lib/pinliner
 	$(BROWSER) test-results/report.html
 
 
@@ -52,4 +52,4 @@ test-cov:
 
 
 run:
-	./build-scripts/run.sh
+	./scripts_build/run.sh

@@ -6,8 +6,8 @@
 dist/
 compiled/
 build/
-TEMPLATE_COMPILED/
 .env
+**/GENERATED/
 
 # Reports generated from real data
 report.*
@@ -19,9 +19,6 @@ examples/
 # [Tt]est*/
 tests-real-sensitive-data/
 test-results/
-
-# exclude auto-generated _VERSION
-src/_VERSION.py
 
 # --- Python artifacts ---
 __pycache__/
