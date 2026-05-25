@@ -80,7 +80,7 @@ def get_handler(endpoints):
                 if renderer and send_body:
                     content, _ = renderer(e, self)
 
-                self.send_response(200)
+                self.send_response(statuscode)
                 self.send_header(f"Content-type", f"{content_type}; charset=utf-8")
                 self.end_headers()
                 if send_body:
