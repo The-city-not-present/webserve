@@ -7,6 +7,7 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
 import html
+import re
 
 
 
@@ -160,7 +161,7 @@ def run(bind_host='0.0.0.0',port_num='0',endpoints=None,config=None):
     except Exception as e:
         raise Exception(f'Can\'t parse port_num param: {port_num}') from e
     server = HTTPServer((bind_host, port_num), get_handler(endpoints,config))
-    print(f'Calling serve_forever() at {bind_host}:{port_num}')
+    print(f'Calling serve_forever() at {bind_host}:{port_num}', flush=True)
     server.serve_forever()
 
 
