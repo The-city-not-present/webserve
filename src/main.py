@@ -2,10 +2,10 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse # for finding handler for the endpoint - we need to know path
 import html # for sanitizing response on errors
-# import re
+import re # for finding best endpoint
 
 from .globals import config
-from .log import print_console, print_console_err, print_console_green
+from .log import print_console, print_console_err, print_console_err_fulltrace, print_console_green
 
 
 
@@ -36,11 +36,12 @@ class WebResponse:
 class Webserver:
     def __init__(self):
         self.endpoints = {}
-        self.bind_host = config.bind_host
-        self.port = config.port
+        self.bind_host = config.get('bind_host','0.0.0.0')
+        self.port = config.get('port',None)
 
     def assign_handlers(self,endpoints:dict={}):
         self.endpoints = {**self.endpoints,**endpoints}
+        return self
 
     def setup(self,cfg):
         def set_bind_host(value):
@@ -61,23 +62,26 @@ class Webserver:
             else:
                 pass
                 # raise Exception(f'Unrecognized config field: {key}')
+        return self
 
     def run(self):
         try:
-            self.port_num = int(self.port_num)
+            self.port = int(self.port)
         except Exception as e:
-            raise Exception(f'Webserve: Can\'t parse port_num param: {self.port_num}') from e
-        server = HTTPServer((self.bind_host, self.port_num), self._get_handler(self.endpoints))
-        print_console_green(f'Calling serve_forever() at {bind_host}:{port_num}')
+            raise Exception(f'Webserve: Can\'t parse port param: {self.port}') from e
+        server = HTTPServer((self.bind_host, self.port), self._get_handler(self.endpoints))
+        print_console_green(f'Calling serve_forever() at {self.bind_host}:{self.port}')
         server.serve_forever()
+        return self
 
     def _get_handler(self,endpoints):
+        webserver = self
         class Handler(BaseHTTPRequestHandler):
             def handle_request(self, send_body=True):
                 try:
 
                     path = urlparse(self.path).path
-                    renderer = self._get_matching_endpoint(path,endpoints)
+                    renderer = webserver._get_matching_endpoint(path,endpoints)
                     assert callable(renderer), 'Whoops, renderer returned from get_matching_endpoint() must be callable'
 
                     response = renderer(self)

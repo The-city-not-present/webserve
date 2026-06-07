@@ -1,5 +1,5 @@
 
-import sys
+import traceback, sys
 
 from .globals import config
 
