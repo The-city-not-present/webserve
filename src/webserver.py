@@ -2,6 +2,7 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 from urllib.parse import urlparse # for finding handler for the endpoint - we need to know path
 from dataclasses import dataclass
+from collections.abc import Iterator
 
 
 
@@ -27,9 +28,9 @@ def raise_err_404_not_found(*_args,**_argv):
 class WebResponse:
     status_code: int
     content_type: str
-    body: str | bytes | None
+    body: str | bytes | Iterator[str | bytes] | None
     headers: list[tuple[str,str]]
-    # cookies # can be passed in headers
+    # cookies # can be passed in headers, no need for separate field
     is_binary: bool = False
     is_done: bool = False
     is_stream: bool = False
@@ -88,8 +89,24 @@ class Webserver:
                         return
 
                     if response.is_stream:
-                        assert response.is_binary, 'webserve: response.is_stream is only supported with response.is_binary'
-                        raise Exception('webserve: is_stream: not implemented')
+                        self.send_response(response.status_code)
+                        for header_name, header_value in response.headers:
+                            self.send_header(header_name, header_value)
+                        if response.is_binary:
+                            self.send_header(f"Content-type", f"{response.content_type}")
+                        else:
+                            self.send_header(f"Content-type", f"{response.content_type}; charset=utf-8")
+                        self.end_headers()
+                        for chunk in response.body:
+                            size_hex = f'{len(chunk):X}'.encode('ascii')
+                            self.wfile.write(size_hex + b'\r\n')
+                            self.wfile.write(chunk if response.is_binary else chunk.encode('ascii'))
+                            self.wfile.write(b'\r\n')
+                            self.wfile.flush()
+                        # End of chunked response
+                        self.wfile.write(b'0\r\n\r\n')
+                        self.wfile.flush()
+                        return
 
                     if not response.content_type:
                         response.content_type = 'text/html'
