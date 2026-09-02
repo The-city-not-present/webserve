@@ -111,6 +111,9 @@ class Webserver:
     def _get_handler(self,endpoints: dict) -> type[BaseHTTPRequestHandler]:
         server = self
         class Handler(BaseHTTPRequestHandler):
+
+            protocol_version = "HTTP/1.1"
+
             def handle_request(self):
                 method = self.command
                 send_body = True if not (method=='HEAD') else False
@@ -152,6 +155,11 @@ class Webserver:
                     if not response.status_code:
                         response.status_code = 200
 
+                    if response.body is None:
+                        response.body = b''
+                    if not response.is_binary:
+                        response.body = response.body.encode("utf-8")
+
                     self.send_response(response.status_code)
                     for header_name, header_value in response.headers:
                         self.send_header(header_name, header_value)
@@ -159,15 +167,11 @@ class Webserver:
                         self.send_header(f"Content-type", f"{response.content_type}")
                     else:
                         self.send_header(f"Content-type", f"{response.content_type}; charset=utf-8")
+                    self.send_header('Content-length',str(len(response.body)))
                     self.end_headers()
                     if send_body:
-                        if response.is_binary:
-                            if response.body is not None:
-                                self.wfile.write(response.body)
-                            else:
-                                self.wfile.write(b'')
-                        else:
-                            self.wfile.write(response.body.encode("utf-8"))
+                        self.wfile.write(response.body)
+
                 except (HTTP404,HTTP403) as e:
                     statuscode = 503
                     if isinstance(e,HTTP404):
@@ -186,14 +190,14 @@ class Webserver:
                             content = content.encode("utf-8")
                             self.send_header(f"Content-type", f"{content_type}; charset=utf-8")
                     self.send_response(statuscode)
+                    self.send_header('Content-length',str(len(content)))
                     self.end_headers()
                     if send_body:
                         self.wfile.write(content)
                 except Exception as e:
                     self.send_response(503)
                     self.send_header(f"Content-type", "text/plain; charset=utf-8")
-                    self.end_headers()
-                    server.logger.print_console_err_fulltrace(e)
+                    body = b''
                     if send_body:
                         try:
                             err = f'{e}'
@@ -220,15 +224,19 @@ class Webserver:
                             except Exception as ee:
                                 server.logger.print_console_err_fulltrace(ee)
                                 pass
-                            # self.wfile.write(("<html><body>"+err_html+"</body></html>").encode("utf-8"))
-                            self.wfile.write((f"{err_txt}").encode("utf-8"))
+                            # body = ("<html><body>"+err_html+"</body></html>").encode("utf-8")
+                            body = f"{err_txt}".encode("utf-8")
                         except Exception as ee:
                             server.logger.print_console_err_fulltrace(ee)
                             # print fallback
                             # err_html = "error processing request"
                             err_txt = "error processing request"
-                            self.wfile.write((f"{err_txt}").encode("utf-8"))
-                            # self.wfile.write(("<html><body>"+err_html+"</body></html>").encode("utf-8"))
+                            body = f"{err_txt}".encode("utf-8")
+                            # body = ("<html><body>"+err_html+"</body></html>").encode("utf-8")
+                    self.send_header('Content-length',str(len(body)))
+                    self.end_headers()
+                    server.logger.print_console_err_fulltrace(e)
+                    self.wfile.write(body)
 
             def log_message(self, format, *args):
                 """http.server logging fn, updated so that status column is aligned in one column after timestamp,
