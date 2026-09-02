@@ -1,8 +1,11 @@
 
 from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 from urllib.parse import urlparse # for finding handler for the endpoint - we need to know path
-from dataclasses import dataclass
-from collections.abc import Iterator
+
+from dataclasses import dataclass # for type annotations
+from collections.abc import Iterator, Iterable, Callable # for type annotations
+from socketserver import BaseRequestHandler # for type annotations
+from typing import BinaryIO
 
 
 
@@ -12,6 +15,40 @@ from .helper_logger_funcs import Logger
 from .match_endpoints import get_matching_endpoint
 
 
+# CONFIG_DEFAULT_STDOUT_CHUNK_SIZE = 1024
+CONFIG_DEFAULT_STDOUT_CHUNK_SIZE = 8192
+# CONFIG_DEFAULT_STDOUT_CHUNK_SIZE = 128
+
+
+ServerClass = Callable[
+    [
+        tuple[str | bytes | bytearray, int],
+        type[BaseRequestHandler],
+    ],
+    HTTPServer | ThreadingHTTPServer,
+]
+
+def as_chunks(
+    s: str | bytes | bytearray | BinaryIO | Iterable[bytes|bytearray] | None,
+        options = None,
+) -> Iterator[bytes]:
+    options = options or {}
+    if s is None:
+        return
+    if isinstance(s, str):
+        yield s.encode('utf-8')
+    elif isinstance(s, bytes):
+        yield s
+    elif isinstance(s, bytearray):
+        yield bytes(s)
+    elif hasattr(s, 'read'):
+        chunk_size = options.get('stdout_chunk_size', CONFIG_DEFAULT_STDOUT_CHUNK_SIZE)
+        while chunk := s.read(chunk_size):
+            yield chunk
+    elif isinstance(s, Iterable):
+        yield from s
+    else:
+        raise TypeError(f'Unsupported type: {type(s).__name__}')
 
 
 
@@ -28,12 +65,13 @@ def raise_err_404_not_found(*_args,**_argv):
 class WebResponse:
     status_code: int
     content_type: str
-    body: str | bytes | Iterator[str | bytes] | None
+    body: str | bytes | bytearray | BinaryIO | Iterable[bytes|bytearray]
     headers: list[tuple[str,str]]
     # cookies # can be passed in headers, no need for separate field
     is_binary: bool = False
     is_done: bool = False
     is_stream: bool = False
+    options: dict | None = None
 
 
 
@@ -54,7 +92,7 @@ class Webserver:
             self.port = int(self.port)
         except Exception as e:
             raise Exception(f'Webserve: Can\'t parse port param: {self.port}') from e
-        cls = HTTPServer
+        cls: ServerClass = HTTPServer
         if self._is_threading_server:
             cls = ThreadingHTTPServer
         server = cls((self.bind_host, self.port), self._get_handler(self.endpoints))
@@ -70,7 +108,7 @@ class Webserver:
             server.server_close()
             # print("\033[0m", end="", flush=True)
 
-    def _get_handler(self,endpoints):
+    def _get_handler(self,endpoints: dict) -> type[BaseHTTPRequestHandler]:
         server = self
         class Handler(BaseHTTPRequestHandler):
             def handle_request(self):
@@ -97,7 +135,7 @@ class Webserver:
                         else:
                             self.send_header(f"Content-type", f"{response.content_type}; charset=utf-8")
                         self.end_headers()
-                        for chunk in response.body:
+                        for chunk in as_chunks(response.body,options=response.options):
                             size_hex = f'{len(chunk):X}'.encode('ascii')
                             self.wfile.write(size_hex + b'\r\n')
                             self.wfile.write(chunk if response.is_binary else chunk.encode('ascii'))
@@ -140,7 +178,7 @@ class Webserver:
                     if not content_type:
                         content_type = 'text/html'
                     content = f'Can\'t find / no access: HTTP {statuscode}'.encode("utf-8")
-                    renderer = endpoints.get(statuscode,None)
+                    renderer: Callable | None = endpoints.get(statuscode,None)
                     if renderer and send_body:
                         response = renderer(self, config=server.config, msg = e)
                         content = response.body
