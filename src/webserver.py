@@ -181,7 +181,7 @@ class Webserver:
                     content_type = 'text/html' if not (self.headers.get("Accept",None) == "application/json") else 'application/json'
                     if not content_type:
                         content_type = 'text/html'
-                    content = f'Can\'t find / no access: HTTP {statuscode}'.encode("utf-8")
+                    content = f'{e}'.encode("utf-8")
                     renderer: Callable | None = endpoints.get(statuscode,None)
                     if renderer and send_body:
                         response = renderer(self, config=server.config, msg = e)
