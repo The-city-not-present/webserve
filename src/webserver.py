@@ -2,22 +2,38 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 from urllib.parse import urlparse # for finding handler for the endpoint - we need to know path
 
-from dataclasses import dataclass # for type annotations
-from collections.abc import Iterator, Iterable, Callable # for type annotations
+from collections.abc import Callable # for type annotations
 from socketserver import BaseRequestHandler # for type annotations
-from typing import BinaryIO
+
+import uuid
+
+
+from .common_defs import (
+    WebserveInternalError,
+    WebResponse,
+    HTTP403,
+    HTTP404,
+)
+
+from .helper_utility_funcs import (
+    as_chunks,
+)
 
 
 
 from .helper_logger_funcs import Logger
 
 
+from .helper_body_reader_proxy import (
+    HTTPBodyLimitedReader,
+    HTTPBodyChunkedReader,
+    HTTPBodyEmptyReader,
+    HTTPBodyMissingReader,
+    FileLikeObject,
+)
+
 from .match_endpoints import get_matching_endpoint
 
-
-# CONFIG_DEFAULT_STDOUT_CHUNK_SIZE = 1024
-CONFIG_DEFAULT_STDOUT_CHUNK_SIZE = 8192
-# CONFIG_DEFAULT_STDOUT_CHUNK_SIZE = 128
 
 
 ServerClass = Callable[
@@ -28,55 +44,41 @@ ServerClass = Callable[
     HTTPServer | ThreadingHTTPServer,
 ]
 
-def as_chunks(
-    s: str | bytes | bytearray | BinaryIO | Iterable[bytes|bytearray] | None,
-        options = None,
-) -> Iterator[bytes]:
-    options = options or {}
-    if s is None:
-        return
-    if isinstance(s, str):
-        yield s.encode('utf-8')
-    elif isinstance(s, bytes):
-        yield s
-    elif isinstance(s, bytearray):
-        yield bytes(s)
-    elif hasattr(s, 'read'):
-        chunk_size = options.get('stdout_chunk_size', CONFIG_DEFAULT_STDOUT_CHUNK_SIZE)
-        while chunk := s.read(chunk_size):
-            yield chunk
-    elif isinstance(s, Iterable):
-        yield from s
-    else:
-        raise TypeError(f'Unsupported type: {type(s).__name__}')
-
-
-
-class HTTP404(Exception):
-    """For HTTP 404"""
-
-class HTTP403(Exception):
-    """For HTTP 404"""
-
-def raise_err_404_not_found(*_args,**_argv):
-    raise HTTP404('404 not found')
-
-@dataclass
-class WebResponse:
-    status_code: int
-    content_type: str
-    body: str | bytes | bytearray | BinaryIO | Iterable[bytes|bytearray]
-    headers: list[tuple[str,str]]
-    # cookies # can be passed in headers, no need for separate field
-    is_binary: bool = False
-    is_done: bool = False
-    is_stream: bool = False
-    options: dict | None = None
-
 
 
 class Webserver:
-    def __init__(self,config,is_threading=True):
+    """Usage:
+if not config.get('http_host'):
+    config['http_host'] = 'localhost'
+if not config.get('http_port'):
+    config['http_port'] = find_free_port(config['http_host'], start=PORT_START_WITH)
+if not config.get('http_protocol'):
+    config['http_protocol'] = 'http'
+if not config.get('http_address'):
+    config['http_address'] = (
+        f'{config["http_protocol"]}://'
+        f'{config["http_host"]}:{config["http_port"]}'
+server = Webserver(config, is_threading=True|False) # a wrapper around python http.server - no flask or django
+server.assign_handlers(endpoints)
+server.run()
+
+endpoints should be a dict:
+- as key, use exact patterns (str), or re.compile regexs
+- as values, use handler functions:
+    that accept
+      1. an instance of BaseHTTPRequestHandler enriched with request_body property (that suports .read() - can be used as file-like object)
+      2. and a "config" object with global app config that you can have passed to Webserver constructor when creating server instance object
+    and should return
+      an instance of WebResponse (or compatible, per protocol) - with headers, status_code, body, and some flags
+  
+  Handler will get called on any http method - GET, POST, HEAD, PATCH, DELETE, PUT, FOO, BAR... Check .method attribute and return http 405 if it's not GET, or not what you support
+
+  From endpoint handler, you can also raise HTTP403 or HTTP 404 - proper status code will be set.
+
+  Or, you can do all outputs to the instance of BaseHTTPRequestHandler you received directly, and return WebResponse with is_done=True flag.
+"""
+
+    def __init__(self, config, is_threading: bool = True ):
         self.endpoints = {}
         self.config = config
         self.bind_host = config.get("http_host")
@@ -84,14 +86,18 @@ class Webserver:
         self._is_threading_server = is_threading
         self.logger = Logger(self.config)
 
+
+
     def assign_handlers(self, endpoints: dict):
         self.endpoints = {**self.endpoints,**endpoints}
+
+
 
     def run(self):
         try:
             self.port = int(self.port)
         except Exception as e:
-            raise Exception(f'Webserve: Can\'t parse port param: {self.port}') from e
+            raise WebserveInternalError(f'Webserve: Can\'t parse port param: {self.port}') from e
         cls: ServerClass = HTTPServer
         if self._is_threading_server:
             cls = ThreadingHTTPServer
@@ -108,22 +114,88 @@ class Webserver:
             server.server_close()
             # print("\033[0m", end="", flush=True)
 
+
+
     def _get_handler(self,endpoints: dict) -> type[BaseHTTPRequestHandler]:
         server = self
+
+
+
+        class HandlerRequestData:
+
+            request_id: str | None = None
+            file: FileLikeObject
+
+            def __init__(self, net_request_handler: BaseHTTPRequestHandler):
+                self._net_request_handler = net_request_handler
+                self.request_id = None
+                self.file = HTTPBodyMissingReader()
+
+            def _create_request_body(self):
+                transfer_encoding = self._net_request_handler.headers.get("Transfer-Encoding", "")
+                if transfer_encoding.lower() == "chunked":
+                    return HTTPBodyChunkedReader(self._net_request_handler.rfile)
+                content_length = self._net_request_handler.headers.get("Content-Length")
+                if content_length is not None:
+                    return HTTPBodyLimitedReader(self._net_request_handler.rfile, int(content_length))
+                return HTTPBodyEmptyReader()
+            
+            # unlink document if some error happened, or if we are done processing it
+            def __del__(self):
+                pass
+
+            # methods required by python so that I can use "with"
+            def __enter__(self):
+                self.request_id = uuid.uuid4()
+                self.file = self._create_request_body()
+                return self
+
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                self.file = HTTPBodyMissingReader()
+                self.request_id = None
+                return None
+
+
+        
         class Handler(BaseHTTPRequestHandler):
 
             protocol_version = "HTTP/1.1"
 
+            handler_id: str
+            _request_body = None
+
+
+
+            def __init__(self,*args,**argv):
+                self.handler_id = uuid.uuid4()
+                self._request = HandlerRequestData(self)
+                super().__init__(*args,**argv)
+
+
+
+            @property
+            def request_body(self):
+                return self._request.file
+
+
+
             def handle_request(self):
+
+                def make_raise_err_404_not_found(path):
+                    def err(*_args,**_argv):
+                        raise HTTP404(f'Path not found: {path}')
+                    return err
+            
                 method = self.command
                 send_body = True if not (method=='HEAD') else False
                 try:
 
                     path = urlparse(self.path).path
-                    renderer = get_matching_endpoint(path,endpoints) or raise_err_404_not_found
-                    assert callable(renderer), 'Whoops, renderer returned from get_matching_endpoint() must be callable'
+                    renderer = get_matching_endpoint(path,endpoints) or make_raise_err_404_not_found(path)
+                    assert callable(renderer), 'Webserve: Whoops, renderer returned from get_matching_endpoint() must be callable'
 
-                    response: WebResponse = renderer(self, config=server.config)
+                    with self._request:
+                        response: WebResponse = renderer(self, config=server.config)
 
                     if response.is_done:
                         # if all necessary headers and body were already sent - the renderer receives the handler instance and can send what is needed directly
@@ -238,7 +310,9 @@ class Webserver:
                     server.logger.print_console_err_fulltrace(e)
                     self.wfile.write(body)
 
-            def log_message(self, format, *args):
+
+
+            def log_request(self, code="-", size="-"):
                 """http.server logging fn, updated so that status column is aligned in one column after timestamp,
 so that it's easier to see 5xx codes; also have colors added.
 
@@ -248,31 +322,37 @@ One caveat: log_message() is also used for things other than normal access logs,
 have custom handlers emitting messages through it, you'd want to handle those separately.
 For ordinary http.server request logging, though, this works cleanly.
                 """
-                request = args[0]
-                status = int(args[1])
-                timestamp = self.log_date_time_string()
+                try:
+                    timestamp = self.log_date_time_string()
+                    status = int(code)
 
-                if status >= 500:
-                    color = "\033[31m"  # red
-                elif status >= 400:
-                    color = "\033[33m"  # yellow
-                elif status >= 300:
-                    color = "\033[36m"  # cyan
-                else:
-                    color = "\033[32m"  # green
+                    if status >= 500:
+                        color = "\033[31m"  # red
+                    elif status >= 400:
+                        color = "\033[33m"  # yellow
+                    elif status >= 300:
+                        color = "\033[36m"  # cyan
+                    else:
+                        color = "\033[32m"  # green
 
-                reset = "\033[0m"
+                    reset = "\033[0m"
 
-                server.logger.log_network_request(
-                    f"{self.address_string()} - - "
-                    f"[{timestamp}] "
-                    f"{color}[{status:03d}]{reset} "
-                    f'"{request}"'
-                )
+                    server.logger.log_network_request(
+                        f"{self.address_string()} - - "
+                        f"[{timestamp}] "
+                        f"{color}[{status:03d}]{reset} "
+                        f'"{self.requestline}"'
+                    )
+                except Exception:
+                    return super().log_request(self, code, size)
+
+
 
             def __getattr__(self, name):
                 if name.startswith("do_"):
                     return self.handle_request
                 raise AttributeError(name)
+
+
 
         return Handler
