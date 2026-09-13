@@ -85,13 +85,14 @@ endpoints should be a dict:
         self.port = config.get("http_port")
         self._is_threading_server = is_threading
         self.logger = Logger(self.config)
-
-
+        self._server = None
 
     def assign_handlers(self, endpoints: dict):
         self.endpoints = {**self.endpoints,**endpoints}
 
-
+    @property
+    def server(self):
+        return self._server
 
     def run(self):
         try:
@@ -105,6 +106,7 @@ endpoints should be a dict:
         if self._is_threading_server:
             server.daemon_threads = True
         self.logger.print_console_green(f'starting webserver at {self.bind_host}:{self.port}')
+        self._server = server
         try:
             server.serve_forever()
         except KeyboardInterrupt:
@@ -112,6 +114,7 @@ endpoints should be a dict:
             # print("\033[0m", end="", flush=True)
         finally:
             server.server_close()
+            self._server = None
             # print("\033[0m", end="", flush=True)
 
 
