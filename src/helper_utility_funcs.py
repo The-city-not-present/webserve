@@ -3,6 +3,7 @@
 # import re
 from collections.abc import Iterator, Iterable # for type annotations
 from typing import BinaryIO
+import sys # for error reporting
 
 
 from .common_defs import (
@@ -50,7 +51,11 @@ def as_chunks(
     elif isinstance(s, bytearray):
         yield bytes(s)
     elif hasattr(s, 'read'):
-        chunk_size = options.get('stdout_chunk_size', CONFIG_DEFAULT_STDOUT_CHUNK_SIZE)
+        try:
+            chunk_size = int(options.get('stdout_chunk_size', CONFIG_DEFAULT_STDOUT_CHUNK_SIZE))
+        except Exception as e:
+            print(f'Webserve: stream results: could not parse "stdout_chunk_size" param ({options.get("stdout_chunk_size")})',file=sys.stderr)
+            chunk_size = CONFIG_DEFAULT_STDOUT_CHUNK_SIZE
         while chunk := s.read(chunk_size):
             yield chunk
     elif isinstance(s, Iterable):
