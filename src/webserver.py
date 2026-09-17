@@ -198,7 +198,7 @@ endpoints should be a dict:
                     assert callable(renderer), 'Webserve: Whoops, renderer returned from get_matching_endpoint() must be callable'
 
                     with self._request:
-                        response: WebResponse = renderer(self, config=server.config)
+                        response: WebResponse = WebResponse.from_existing(renderer(self, config=server.config))
 
                     if response.is_done:
                         # if all necessary headers and body were already sent - the renderer receives the handler instance and can send what is needed directly
@@ -206,12 +206,19 @@ endpoints should be a dict:
 
                     if response.is_stream:
                         self.send_response(response.status_code)
+                        if not response.has_header('Cache-control'):
+                            self.send_header( 'Cache-control',       'no-cache',    )
+                        if not response.has_header('Connection'):
+                            self.send_header( 'Connection',          'keep-alive',  )
+                        if not response.has_header('Transfer-Encoding'):
+                            self.send_header( 'Transfer-Encoding',   'chunked',     )
                         for header_name, header_value in response.headers:
                             self.send_header(header_name, header_value)
-                        if response.is_binary:
-                            self.send_header(f"Content-type", f"{response.content_type}")
-                        else:
-                            self.send_header(f"Content-type", f"{response.content_type}; charset=utf-8")
+                        if not response.has_header('Content-type'):
+                            if response.is_binary:
+                                self.send_header(f"Content-type", f"{response.content_type}")
+                            else:
+                                self.send_header(f"Content-type", f"{response.content_type}; charset=utf-8")
                         self.end_headers()
                         for chunk in as_chunks(response.body,options=response.options):
                             size_hex = f'{len(chunk):X}'.encode('ascii')
@@ -238,10 +245,11 @@ endpoints should be a dict:
                     self.send_response(response.status_code)
                     for header_name, header_value in response.headers:
                         self.send_header(header_name, header_value)
-                    if response.is_binary:
-                        self.send_header(f"Content-type", f"{response.content_type}")
-                    else:
-                        self.send_header(f"Content-type", f"{response.content_type}; charset=utf-8")
+                    if not response.has_header('Content-type'):
+                        if response.is_binary:
+                            self.send_header(f"Content-type", f"{response.content_type}")
+                        else:
+                            self.send_header(f"Content-type", f"{response.content_type}; charset=utf-8")
                     self.send_header('Content-length',str(len(response.body)))
                     self.end_headers()
                     if send_body:
@@ -258,8 +266,9 @@ endpoints should be a dict:
                         content_type = 'text/html'
                     content = f'{e}'.encode("utf-8")
                     renderer: Callable | None = endpoints.get(statuscode,None)
-                    if renderer and send_body:
-                        response = renderer(self, config=server.config, msg = e)
+                    
+                    if renderer and callable(renderer) and send_body:
+                        response: WebResponse = WebResponse.from_existing(renderer(self, config=server.config, msg = e))
                         content = response.body
                         if not response.is_binary:
                             content = content.encode("utf-8")

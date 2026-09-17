@@ -28,6 +28,25 @@ class WebResponse:
     is_done: bool = False
     is_stream: bool = False
     options: dict | None = None
-
+    
+    def has_header(self,name: str) -> bool:
+        def is_empty(n):
+            if n is None:
+                return True
+            elif isinstance(n,(int,float,bool,)):
+                return False
+            elif isinstance(n,str):
+                return len(n.strip())>0
+            else:
+                return not not n
+        def as_str(n):
+            return '' if is_empty(n) else f'{n}'
+        header_names_norm = [ as_str(h[0]).strip().lower() for h in (self.headers or []) ]
+        name_norm = name.strip().lower()
+        return name_norm in header_names_norm
+    
+    @classmethod
+    def from_existing(cls, obj):
+        return cls(**vars(obj))
 
 
