@@ -45,6 +45,8 @@ ServerClass = Callable[
 ]
 
 
+default_body_encoding = 'utf-8'
+
 
 class Webserver:
     """Usage:
@@ -205,6 +207,7 @@ endpoints should be a dict:
                         return
 
                     if response.is_stream:
+                        body_encoding = response.body_text_encoding or default_body_encoding
                         self.send_response(response.status_code)
                         if not response.has_header('Cache-control'):
                             self.send_header( 'Cache-control',       'no-cache',    )
@@ -218,18 +221,22 @@ endpoints should be a dict:
                             if response.is_binary:
                                 self.send_header(f"Content-type", f"{response.content_type}")
                             else:
-                                self.send_header(f"Content-type", f"{response.content_type}; charset=utf-8")
+                                self.send_header(f"Content-type", f"{response.content_type}; charset={body_encoding}")
                         self.end_headers()
-                        for chunk in as_chunks(response.body,options=response.options):
+                        for chunk in as_chunks(response.body, options=response.options):
+                            if not response.is_binary:
+                                chunk = chunk.encode(body_encoding)
                             size_hex = f'{len(chunk):X}'.encode('ascii')
                             self.wfile.write(size_hex + b'\r\n')
-                            self.wfile.write(chunk if response.is_binary else chunk.encode('ascii'))
+                            self.wfile.write(chunk)
                             self.wfile.write(b'\r\n')
                             self.wfile.flush()
-                        # End of chunked response
+
                         self.wfile.write(b'0\r\n\r\n')
                         self.wfile.flush()
                         return
+
+                    body_encoding = response.body_text_encoding or default_body_encoding
 
                     if not response.content_type:
                         response.content_type = 'text/html'
@@ -240,7 +247,7 @@ endpoints should be a dict:
                     if response.body is None:
                         response.body = b''
                     if not response.is_binary:
-                        response.body = response.body.encode("utf-8")
+                        response.body = response.body.encode(body_encoding)
 
                     self.send_response(response.status_code)
                     for header_name, header_value in response.headers:
@@ -249,7 +256,7 @@ endpoints should be a dict:
                         if response.is_binary:
                             self.send_header(f"Content-type", f"{response.content_type}")
                         else:
-                            self.send_header(f"Content-type", f"{response.content_type}; charset=utf-8")
+                            self.send_header(f"Content-type", f"{response.content_type}; charset={body_encoding}")
                     self.send_header('Content-length',str(len(response.body)))
                     self.end_headers()
                     if send_body:
@@ -264,15 +271,17 @@ endpoints should be a dict:
                     content_type = 'text/html' if not (self.headers.get("Accept",None) == "application/json") else 'application/json'
                     if not content_type:
                         content_type = 'text/html'
-                    content = f'{e}'.encode("utf-8")
+                    body_encoding = default_body_encoding
+                    content = f'{e}'.encode(body_encoding)
                     renderer: Callable | None = endpoints.get(statuscode,None)
                     
                     if renderer and callable(renderer) and send_body:
                         response: WebResponse = WebResponse.from_existing(renderer(self, config=server.config, msg = e))
+                        body_encoding = response.body_text_encoding or default_body_encoding
                         content = response.body
                         if not response.is_binary:
-                            content = content.encode("utf-8")
-                            self.send_header(f"Content-type", f"{content_type}; charset=utf-8")
+                            content = content.encode(body_encoding)
+                            self.send_header(f"Content-type", f"{content_type}; charset={body_encoding}")
                     self.send_response(statuscode)
                     self.send_header('Content-length',str(len(content)))
                     self.end_headers()
@@ -280,7 +289,8 @@ endpoints should be a dict:
                         self.wfile.write(content)
                 except Exception as e:
                     self.send_response(503)
-                    self.send_header(f"Content-type", "text/plain; charset=utf-8")
+                    body_encoding = default_body_encoding
+                    self.send_header(f"Content-type", f"text/plain; charset={body_encoding}")
                     body = b''
                     if send_body:
                         try:
@@ -308,15 +318,15 @@ endpoints should be a dict:
                             except Exception as ee:
                                 server.logger.print_console_err_fulltrace(ee)
                                 pass
-                            # body = ("<html><body>"+err_html+"</body></html>").encode("utf-8")
-                            body = f"{err_txt}".encode("utf-8")
+                            # body = ("<html><body>"+err_html+"</body></html>").encode(body_encoding)
+                            body = f"{err_txt}".encode(body_encoding)
                         except Exception as ee:
                             server.logger.print_console_err_fulltrace(ee)
                             # print fallback
                             # err_html = "error processing request"
                             err_txt = "error processing request"
-                            body = f"{err_txt}".encode("utf-8")
-                            # body = ("<html><body>"+err_html+"</body></html>").encode("utf-8")
+                            body = f"{err_txt}".encode(body_encoding)
+                            # body = ("<html><body>"+err_html+"</body></html>").encode(body_encoding)
                     self.send_header('Content-length',str(len(body)))
                     self.end_headers()
                     server.logger.print_console_err_fulltrace(e)

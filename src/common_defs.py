@@ -1,6 +1,6 @@
 from typing import BinaryIO
 from collections.abc import Iterable, Callable # for type annotations
-from dataclasses import dataclass # for type annotations
+from dataclasses import dataclass, field # for type annotations
 
 
 
@@ -26,6 +26,7 @@ class WebResponse:
     # cookies # can be passed in headers, no need for separate field
     is_binary: bool = False
     is_done: bool = False
+    body_text_encoding: str = field(default='utf-8') # 'ascii'
     is_stream: bool = False
     options: dict | None = None
     
