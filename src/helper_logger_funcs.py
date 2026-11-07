@@ -56,44 +56,51 @@ def _err(*args):
     raise Exception(*args)
 
 class Logger:
-    def __init__(self, config: dict ):
+    def __init__(self, config: dict, enabled: bool = True):
         self.config = {**config}
+        self.enabled = enabled
         self.message_queue = Queue()
-        self.initiate_worker_loop(self.message_queue,self.config,)
+        self.initiate_worker_loop(self.message_queue, self.config)
 
-    def initiate_worker_loop(self, config, queue):
+    def initiate_worker_loop(self, queue, config):
         thread = Thread(
             target = worker_printer_loop,
-            args   = ( config, queue, ),
+            args   = ( queue, config, ),
             daemon = True,
         )
         thread.start()
         return thread
 
+    def _put(self, record: Record):
+        if self.enabled:
+            self.message_queue.put(record)
+
     def log_network_request(self,message):
-        self.message_queue.put(Record(message=message,file=sys.stdout))
+        self._put(Record(message=message,file=sys.stdout))
 
     def print_console(self,msg):
-        self.message_queue.put(Record(message=f'{self.config.get("script_name","webserve")}: {msg}',file=sys.stdout))
+        self._put(Record(message=f'{self.config.get("script_name","webserve")}: {msg}',file=sys.stdout))
 
     def print_console_green(self,msg):
-        self.message_queue.put(Record(message=f'{self.config.get("script_name","webserve")}: {STDOUT_COLOR_GREEN}{msg}{STDOUT_COLOR_RESET}',file=sys.stdout))
+        self._put(Record(message=f'{self.config.get("script_name","webserve")}: {STDOUT_COLOR_GREEN}{msg}{STDOUT_COLOR_RESET}',file=sys.stdout))
 
     def print_console_err(self,msg):
-        self.message_queue.put(Record(message=f'{self.config.get("script_name","webserve")}: {STDOUT_COLOR_RED}{msg}{STDOUT_COLOR_RESET}',file=sys.stderr))
+        self._put(Record(message=f'{self.config.get("script_name","webserve")}: {STDOUT_COLOR_RED}{msg}{STDOUT_COLOR_RESET}',file=sys.stderr))
 
     def print_console_err_fulltrace(self,e):
         buf = StringIO()
         traceback.print_exception(e,limit=20, file=buf)
-        err_stacktrace = buf.getvalue()
+        self.print_error_message(f'{e}', buf.getvalue())
+
+    def print_error_message(self, message, traceback_str=''):
         txt = ''
         txt += f'{STDOUT_COLOR_RED}Error:{STDOUT_COLOR_RESET}\n{STDOUT_COLOR_RED}Stack trace:'+f'{STDOUT_COLOR_RESET}\n'
         txt += f'{STDOUT_COLOR_RED}'+''+f'{STDOUT_COLOR_RESET}\n'
         txt += f'{STDOUT_COLOR_RED}'+'Error:'+f'{STDOUT_COLOR_RESET}\n'
-        txt += f'{STDOUT_COLOR_RED}{e}{STDOUT_COLOR_RESET}\n'
+        txt += f'{STDOUT_COLOR_RED}{message}{STDOUT_COLOR_RESET}\n'
         txt += f'\n'
-        txt += f'{STDOUT_COLOR_RED}'+err_stacktrace+f'{STDOUT_COLOR_RESET}\n\n'
-        self.message_queue.put(Record(message=txt,file=sys.stderr))
+        txt += f'{STDOUT_COLOR_RED}'+traceback_str+f'{STDOUT_COLOR_RESET}\n\n'
+        self._put(Record(message=txt,file=sys.stderr))
 
     @staticmethod
     def make_err_fulltrace_message(e):

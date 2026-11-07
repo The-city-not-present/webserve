@@ -7,6 +7,8 @@ from socketserver import BaseRequestHandler # for type annotations
 
 import uuid
 
+import traceback
+
 
 from .common_defs import (
     WebserveInternalError,
@@ -22,6 +24,8 @@ from .helper_utility_funcs import (
 
 
 from .helper_logger_funcs import Logger
+
+from .events import WebserveEvents
 
 
 from .helper_body_reader_proxy import (
@@ -78,19 +82,36 @@ endpoints should be a dict:
   From endpoint handler, you can also raise HTTP403 or HTTP 404 - proper status code will be set.
 
   Or, you can do all outputs to the instance of BaseHTTPRequestHandler you received directly, and return WebResponse with is_done=True flag.
+
+  Webserver exposes:
+  - `logging_enabled` (constructor arg, default True): when False, the built-in
+    console logging is disabled and webserve only emits events.
+  - `events` (a WebserveEvents): subscribe `listener(event_name, payload)` to
+    receive `webserver_start`, `webserver_stop`, `request`, and `error` events,
+    and implement the logging on the caller side.
 """
 
-    def __init__(self, config, is_threading: bool = True ):
+    def __init__(self, config, is_threading: bool = True, logging_enabled: bool = True):
         self.endpoints = {}
         self.config = config
         self.bind_host = config.get("http_host")
         self.port = config.get("http_port")
         self._is_threading_server = is_threading
-        self.logger = Logger(self.config)
+        self.logging_enabled = logging_enabled
+        self.events = WebserveEvents()
+        self.logger = Logger(self.config, enabled=logging_enabled)
         self._server = None
 
     def assign_handlers(self, endpoints: dict):
         self.endpoints = {**self.endpoints,**endpoints}
+
+    def emit_event(self, event_name: str, payload: dict):
+        self.events.emit(event_name, payload)
+
+    def _report_error(self, e: Exception):
+        traceback_str = ''.join(traceback.format_exception(e, limit=20))
+        self.emit_event('error', {'message': f'{e}', 'traceback': traceback_str})
+        self.logger.print_error_message(f'{e}', traceback_str)
 
     @property
     def server(self):
@@ -107,12 +128,15 @@ endpoints should be a dict:
         server = cls((self.bind_host, self.port), self._get_handler(self.endpoints))
         if self._is_threading_server:
             server.daemon_threads = True
+        self.emit_event('webserver_start', {'host': f'{self.bind_host}', 'port': self.port})
         self.logger.print_console_green(f'starting webserver at {self.bind_host}:{self.port}')
         self._server = server
         try:
             server.serve_forever()
         except KeyboardInterrupt:
-            print("\n\033[31mStopped (keyboard interrupt)\033[0m")
+            self.emit_event('webserver_stop', {'reason': 'keyboard interrupt'})
+            if self.logging_enabled:
+                print("\n\033[31mStopped (keyboard interrupt)\033[0m")
             # print("\033[0m", end="", flush=True)
         finally:
             server.server_close()
@@ -316,12 +340,12 @@ endpoints should be a dict:
                                 # #     server.logger.print_console_err_fulltrace(ee)
                                 # #     pass
                             except Exception as ee:
-                                server.logger.print_console_err_fulltrace(ee)
+                                server._report_error(ee)
                                 pass
                             # body = ("<html><body>"+err_html+"</body></html>").encode(body_encoding)
                             body = f"{err_txt}".encode(body_encoding)
                         except Exception as ee:
-                            server.logger.print_console_err_fulltrace(ee)
+                            server._report_error(ee)
                             # print fallback
                             # err_html = "error processing request"
                             err_txt = "error processing request"
@@ -329,7 +353,7 @@ endpoints should be a dict:
                             # body = ("<html><body>"+err_html+"</body></html>").encode(body_encoding)
                     self.send_header('Content-length',str(len(body)))
                     self.end_headers()
-                    server.logger.print_console_err_fulltrace(e)
+                    server._report_error(e)
                     self.wfile.write(body)
 
 
@@ -343,10 +367,29 @@ That gives you a log where 500/503 etc. immediately jump out in red, while 4xx a
 One caveat: log_message() is also used for things other than normal access logs, so if you
 have custom handlers emitting messages through it, you'd want to handle those separately.
 For ordinary http.server request logging, though, this works cleanly.
+
+Structured fields are also emitted as a `request` event (independent of the built-in
+console logging), so the caller can re-implement the logging.
                 """
                 try:
                     timestamp = self.log_date_time_string()
-                    status = int(code)
+                    try:
+                        status = int(code)
+                    except (TypeError, ValueError):
+                        status = None
+
+                    server.emit_event('request', {
+                        'method': f'{self.command}',
+                        'path': urlparse(self.path).path,
+                        'status_code': status if status is not None else f'{code}',
+                        'timestamp': timestamp,
+                        'remote_address': self.address_string(),
+                        'request_line': self.requestline,
+                        'response_size': size,
+                    })
+
+                    if status is None:
+                        return super().log_request(code, size)
 
                     if status >= 500:
                         color = "\033[31m"  # red
@@ -366,7 +409,7 @@ For ordinary http.server request logging, though, this works cleanly.
                         f'"{self.requestline}"'
                     )
                 except Exception:
-                    return super().log_request(self, code, size)
+                    return super().log_request(code, size)
 
 
 
